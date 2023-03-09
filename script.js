@@ -11,6 +11,7 @@ const inputElevation = document.querySelector('.form__input--elevation');
 class Workout {
   date = new Date();
   id = (Date.now() + '').slice(-10); // Should use a proper lib to generate unique IDs, for now just grab last 10 digits of time
+  clicks = 0;
 
   constructor(coords, distance, duration) {
     this.coords = coords; // [lat, lng], decimal degrees
@@ -25,6 +26,10 @@ class Workout {
     this.description = `${this.type[0].toUpperCase()}${this.type.slice(1)} on ${
       months[this.date.getMonth()]
     } ${this.date.getDate()}`;
+  }
+
+  click() {
+    this.clicks++;
   }
 }
 
@@ -63,15 +68,22 @@ class Cycling extends Workout {
 class App {
   // Private members
   #map;
+  #mapZoomLevel = 13;
   #mapEvent;
   #workouts = [];
 
   constructor() {
+    // Get user's approx. position
     this._getPosition();
+
+    // Get data from local storage
+    this._getLocalStorage();
 
     form.addEventListener('submit', this._newWorkout.bind(this)); // Bind the object itself (App), not the form
 
     inputType.addEventListener('change', this._toggleElevationField); // toggleElevField doesn't use "this" keyword, so
+
+    containerWorkouts.addEventListener('click', this._moveToPopup.bind(this));
   }
 
   _getPosition() {
@@ -93,7 +105,7 @@ class App {
     const coords = [latitude, longitude];
 
     // Leaflet map object
-    this.#map = L.map('map').setView(coords, 13);
+    this.#map = L.map('map').setView(coords, this.#mapZoomLevel);
 
     // This can be customized, see https://leaflet-extras.github.io/leaflet-providers/preview/
     L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
@@ -104,6 +116,11 @@ class App {
 
     // Handle clicks on map
     this.#map.on('click', this._showForm.bind(this));
+
+    // Render workout marker from storage
+    this.#workouts.forEach(work => {
+      this._renderWorkoutMarker(work);
+    });
   }
 
   _showForm(mapE) {
@@ -185,6 +202,9 @@ class App {
 
     // Hide form and clear input fields
     this._hideForm();
+
+    // Set local storage to all workouts
+    this._setLocalStorage();
   }
 
   _renderWorkoutMarker(workout) {
@@ -252,6 +272,55 @@ class App {
     }
 
     form.insertAdjacentHTML('afterend', html);
+  }
+
+  _moveToPopup(e) {
+    const workoutEl = e.target.closest('.workout');
+
+    if (!workoutEl) return;
+
+    const workout = this.#workouts.find(
+      work => work.id === workoutEl.dataset.id
+    );
+
+    this.#map.setView(workout.coords, this.#mapZoomLevel, {
+      animate: true,
+      pan: {
+        duration: 1,
+      },
+    });
+
+    // Using the public interface
+    // Just a demonstration that this function will not work
+    // when retrieving from localstorage, as the restored "objects"
+    // are not actually objects with their prototype hierarchy.
+    // Code would have to be written to restore those objects properly.
+    // Objects from local storage will not inherit their methods.
+    // workout.click();
+  }
+
+  _setLocalStorage() {
+    localStorage.setItem('workouts', JSON.stringify(this.#workouts));
+  }
+
+  _getLocalStorage() {
+    const data = JSON.parse(localStorage.getItem('workouts'));
+
+    if (!data) return;
+
+    this.#workouts = data;
+
+    this.#workouts.forEach(work => {
+      this._renderWorkout(work);
+      // Cannot render markers as map hasn't loaded yet
+    });
+  }
+
+  // Delete from local storage
+  // Call "app.reset()" from the console.
+  reset() {
+    localStorage.removeItem('workouts');
+    location.reload();
   }
 }
 
